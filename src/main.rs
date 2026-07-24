@@ -1,40 +1,78 @@
-use axum::{routing::get, Router};
+//! act-web-server — Supabase-authenticated HTTP API for the AntiCapTrad platform.
+//!
+//! Deployed to the k8s cluster at ~/codes/ores/k8s-cluster. Persistence is
+//! Postgres (Supabase) via sea-orm; auth is Supabase-issued HS256 JWTs.
+
+mod auth;
+mod config;
+mod db;
+mod routes;
+mod state;
+mod telemetry;
+
 use std::net::SocketAddr;
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tokio::signal;
 
 #[tokio::main]
-async fn main() {
-    tracing_subscriber::registry()
-        .with(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "act_web_server=debug,info".into()),
-        )
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+async fn main() -> anyhow::Result<()> {
+    let cfg = config::Config::from_env();
+    telemetry::init(&cfg.service_name)?;
 
-    // In a real app, this would extract the `Authorization` header, parse the JWT, 
-    // and verify it against Supabase's JWKS endpoint.
-    let app = Router::new()
-        .route("/health", get(|| async { "OK" }))
-        .layer(axum::middleware::from_fn(supabase_auth_middleware));
+    let db = match &cfg.database_url {
+        Some(url) => db::connect(url).await,
+        None => {
+            tracing::info!("DATABASE_URL not set; running without persistence");
+            None
+        }
+    };
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3002));
-    tracing::info!("listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    if cfg.supabase_jwt_secret.is_none() {
+        tracing::warn!("SUPABASE_JWT_SECRET not set; protected routes will reject all requests");
+    }
+
+    let state = state::AppState {
+        db,
+        jwt_secret: cfg.supabase_jwt_secret.clone(),
+        jwt_aud: cfg.supabase_jwt_aud.clone(),
+    };
+
+    let app = routes::router(state);
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], cfg.port));
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    tracing::info!(%addr, service = %cfg.service_name, "act-web-server listening");
+
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+
+    tracing::info!("shutdown complete");
+    telemetry::shutdown();
+    Ok(())
 }
 
-use axum::{extract::Request, middleware::Next, response::Response, http::StatusCode};
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("failed to install Ctrl-C handler");
+    };
 
-async fn supabase_auth_middleware(
-    request: Request,
-    next: Next,
-) -> Result<Response, StatusCode> {
-    // Placeholder logic for Supabase JWT verification
-    let _auth_header = request.headers().get("Authorization");
-    
-    // For now, pass the request through.
-    // In the future, decode and verify the JWT with jsonwebtoken crate.
-    let response = next.run(request).await;
-    Ok(response)
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("failed to install SIGTERM handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
+
+    tracing::info!("shutdown signal received");
 }
