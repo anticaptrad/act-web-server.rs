@@ -34,6 +34,8 @@ async fn main() -> anyhow::Result<()> {
         db,
         jwt_secret: cfg.supabase_jwt_secret.clone(),
         jwt_aud: cfg.supabase_jwt_aud.clone(),
+        jwt_issuer: cfg.supabase_jwt_iss.clone(),
+        jwt_leeway_secs: cfg.supabase_jwt_leeway_secs,
     };
 
     let app = routes::router(state);

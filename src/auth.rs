@@ -29,6 +29,11 @@ pub struct Claims {
     pub role: Option<String>,
     /// Expiry (seconds since epoch); validated by jsonwebtoken.
     pub exp: usize,
+    /// Audience. Required rather than optional on purpose: jsonwebtoken skips
+    /// audience matching entirely when the claim is absent, so an optional
+    /// field would let a token minted for another service through. Typed as a
+    /// `Value` because the JWT spec allows either a string or an array.
+    pub aud: serde_json::Value,
 }
 
 pub async fn require_auth(
@@ -45,6 +50,13 @@ pub async fn require_auth(
 
     let mut validation = Validation::new(Algorithm::HS256);
     validation.set_audience(&[state.jwt_aud.as_str()]);
+    // Not validated by default, which would accept a not-yet-valid token.
+    validation.validate_nbf = true;
+    // The 60s default is wider than we need; keep just enough for clock skew.
+    validation.leeway = state.jwt_leeway_secs;
+    if let Some(issuer) = state.jwt_issuer.as_ref() {
+        validation.set_issuer(&[issuer.as_str()]);
+    }
 
     let claims = decode::<Claims>(
         &token,

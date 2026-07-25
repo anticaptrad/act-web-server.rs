@@ -11,6 +11,10 @@ pub struct Config {
     pub supabase_jwt_secret: Option<String>,
     /// Expected `aud` claim; Supabase issues "authenticated" for signed-in users.
     pub supabase_jwt_aud: String,
+    /// Expected `iss` claim. When set, tokens from another issuer are rejected.
+    pub supabase_jwt_iss: Option<String>,
+    /// Clock-skew tolerance for `exp`/`nbf`, in seconds.
+    pub supabase_jwt_leeway_secs: u64,
 }
 
 impl Config {
@@ -28,12 +32,21 @@ impl Config {
         let supabase_jwt_aud =
             std::env::var("SUPABASE_JWT_AUD").unwrap_or_else(|_| "authenticated".to_string());
 
+        let supabase_jwt_iss = non_empty(std::env::var("SUPABASE_JWT_ISS").ok());
+
+        let supabase_jwt_leeway_secs = std::env::var("SUPABASE_JWT_LEEWAY_SECS")
+            .ok()
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(5);
+
         Self {
             port,
             service_name,
             database_url,
             supabase_jwt_secret,
             supabase_jwt_aud,
+            supabase_jwt_iss,
+            supabase_jwt_leeway_secs,
         }
     }
 }
