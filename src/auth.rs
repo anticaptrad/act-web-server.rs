@@ -29,6 +29,11 @@ pub struct Claims {
     pub role: Option<String>,
     /// Expiry (seconds since epoch); validated by jsonwebtoken.
     pub exp: usize,
+    /// Audience. Required rather than optional on purpose: jsonwebtoken skips
+    /// audience matching entirely when the claim is absent, so an optional
+    /// field would let a token minted for another service through. Typed as a
+    /// `Value` because the JWT spec allows either a string or an array.
+    pub aud: serde_json::Value,
 }
 
 pub async fn require_auth(
