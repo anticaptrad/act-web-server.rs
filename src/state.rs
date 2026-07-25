@@ -10,4 +10,8 @@ pub struct AppState {
     pub jwt_secret: Option<String>,
     /// Expected JWT audience claim.
     pub jwt_aud: String,
+    /// Expected JWT issuer claim; `None` disables issuer checking.
+    pub jwt_issuer: Option<String>,
+    /// Clock-skew tolerance for `exp`/`nbf`, in seconds.
+    pub jwt_leeway_secs: u64,
 }
