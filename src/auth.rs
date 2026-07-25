@@ -50,6 +50,13 @@ pub async fn require_auth(
 
     let mut validation = Validation::new(Algorithm::HS256);
     validation.set_audience(&[state.jwt_aud.as_str()]);
+    // Not validated by default, which would accept a not-yet-valid token.
+    validation.validate_nbf = true;
+    // The 60s default is wider than we need; keep just enough for clock skew.
+    validation.leeway = state.jwt_leeway_secs;
+    if let Some(issuer) = state.jwt_issuer.as_ref() {
+        validation.set_issuer(&[issuer.as_str()]);
+    }
 
     let claims = decode::<Claims>(
         &token,
