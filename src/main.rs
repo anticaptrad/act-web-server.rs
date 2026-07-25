@@ -9,6 +9,7 @@ mod db;
 mod routes;
 mod state;
 mod telemetry;
+mod ui;
 
 use std::net::SocketAddr;
 use tokio::signal;

@@ -5,6 +5,7 @@ use serde_json::{Value, json};
 
 use crate::auth::{self, Claims};
 use crate::state::AppState;
+use crate::ui;
 
 pub fn router(state: AppState) -> Router {
     // Routes behind Supabase JWT verification.
@@ -16,6 +17,9 @@ pub fn router(state: AppState) -> Router {
         ));
 
     Router::new()
+        // Operator UI. Public like the probes: it exposes no data of its own and
+        // reads /api/me only with a token the operator supplies in the browser.
+        .route("/", get(ui::index))
         .route("/health", get(health))
         .route("/ready", get(ready))
         .merge(protected)
