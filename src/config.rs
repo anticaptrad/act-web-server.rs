@@ -11,6 +11,10 @@ pub struct Config {
     pub supabase_jwt_secret: Option<String>,
     /// Expected `aud` claim; Supabase issues "authenticated" for signed-in users.
     pub supabase_jwt_aud: String,
+    /// Expected `iss` claim. When set, tokens from another issuer are rejected.
+    pub supabase_jwt_iss: Option<String>,
+    /// Clock-skew tolerance for `exp`/`nbf`, in seconds.
+    pub supabase_jwt_leeway_secs: u64,
 }
 
 impl Config {
