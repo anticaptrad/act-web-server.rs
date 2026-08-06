@@ -9,12 +9,13 @@ use crate::ui;
 
 pub fn router(state: AppState) -> Router {
     // Routes behind Supabase JWT verification.
-    let protected = Router::new()
-        .route("/api/me", get(me))
-        .route_layer(middleware::from_fn_with_state(
-            state.clone(),
-            auth::require_auth,
-        ));
+    let protected =
+        Router::new()
+            .route("/api/me", get(me))
+            .route_layer(middleware::from_fn_with_state(
+                state.clone(),
+                auth::require_auth,
+            ));
 
     Router::new()
         // Operator UI. Public like the probes: it exposes no data of its own and
