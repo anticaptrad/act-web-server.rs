@@ -6,9 +6,18 @@ name = "act_web_server"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = []
+ui-leptos = ["dep:leptos"]
+ui-dioxus = ["dep:dioxus", "dep:dioxus-ssr"]
+
 [dependencies]
 tokio = { version = "1.37.0", features = ["full"] }
 axum = "0.7.5"
+maud = { version = "0.26.0", features = ["axum"] }
+leptos = { version = "0.8.10", default-features = false, features = ["ssr"], optional = true }
+dioxus = { version = "0.7.3", default-features = false, features = ["minimal"], optional = true }
+dioxus-ssr = { version = "0.7.3", optional = true }
 serde = { version = "1.0.197", features = ["derive"] }
 serde_json = "1.0.115"
 tracing = "0.1.40"

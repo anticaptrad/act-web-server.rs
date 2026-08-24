@@ -61,6 +61,10 @@ mod routes;
 mod state;
 mod telemetry;
 mod ui;
+#[cfg(feature = "ui-dioxus")]
+mod ui_dioxus;
+#[cfg(feature = "ui-leptos")]
+mod ui_leptos;
 
 use std::net::SocketAddr;
 use tokio::signal;

@@ -17,14 +17,20 @@ pub fn router(state: AppState) -> Router {
                 auth::require_auth,
             ));
 
-    Router::new()
+    let public = Router::new()
         // Operator UI. Public like the probes: it exposes no data of its own and
         // reads /api/me only with a token the operator supplies in the browser.
         .route("/", get(ui::index))
         .route("/health", get(health))
-        .route("/ready", get(ready))
-        .merge(protected)
-        .with_state(state)
+        .route("/ready", get(ready));
+
+    #[cfg(feature = "ui-leptos")]
+    let public = public.route("/ui/leptos", get(crate::ui_leptos::index));
+
+    #[cfg(feature = "ui-dioxus")]
+    let public = public.route("/ui/dioxus", get(crate::ui_dioxus::index));
+
+    public.merge(protected).with_state(state)
 }
 
 /// Liveness probe.
