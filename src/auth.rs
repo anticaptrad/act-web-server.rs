@@ -1,85 +1,156 @@
-//! Supabase JWT verification middleware.
+//! Fail-closed Shared Auth middleware for the web boundary.
 //!
-//! Supabase issues HS256-signed access tokens. This middleware extracts the
-//! `Authorization: Bearer <jwt>` header, verifies the signature against the
-//! configured secret, and validates the `exp` and `aud` claims. Verified claims
-//! are stored in request extensions for downstream handlers.
-//!
-//! The middleware fails closed: a missing/invalid token is rejected, and if no
-//! signing secret is configured every protected request is denied.
+//! The browser-supplied product bearer and the independently injected service
+//! credential have separate lanes. The official client sends the user bearer
+//! in the introspection body and uses the service credential only to authorize
+//! that server-to-server request.
 
 use axum::{
     extract::{Request, State},
-    http::{StatusCode, header},
+    http::{HeaderMap, StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
 };
-use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode};
-use serde::{Deserialize, Serialize};
+use shared_auth_client::{ClientError, SharedAuthClient};
 
 use crate::state::AppState;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Claims {
-    /// Subject — the Supabase user id.
-    pub sub: String,
-    #[serde(default)]
-    pub email: Option<String>,
-    #[serde(default)]
-    pub role: Option<String>,
-    /// Expiry (seconds since epoch); validated by jsonwebtoken.
-    pub exp: usize,
-    /// Audience. Required rather than optional on purpose: jsonwebtoken skips
-    /// audience matching entirely when the claim is absent, so an optional
-    /// field would let a token minted for another service through. Typed as a
-    /// `Value` because the JWT spec allows either a string or an array.
-    pub aud: serde_json::Value,
+const REQUIRED_SCOPES: [&str; 1] = ["youtube:admin"];
+const MAX_INTROSPECTION_RESPONSE_BYTES: usize = 64 * 1024;
+
+#[derive(Clone)]
+pub struct SharedAuthVerifier {
+    client: SharedAuthClient,
+    audience: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerifiedIdentity {
+    pub subject: String,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AuthFailure {
+    Missing,
+    Invalid,
+    Unavailable,
+}
+
+impl SharedAuthVerifier {
+    pub fn new(
+        base_url: impl Into<String>,
+        service_credential: impl Into<String>,
+        audience: impl Into<String>,
+    ) -> Result<Self, ClientError> {
+        let client = SharedAuthClient::try_new(base_url)?
+            .with_service_credential(service_credential)
+            .with_max_response_bytes(MAX_INTROSPECTION_RESPONSE_BYTES);
+        Ok(Self {
+            client,
+            audience: audience.into(),
+        })
+    }
+
+    pub async fn verify(&self, headers: &HeaderMap) -> Result<VerifiedIdentity, AuthFailure> {
+        let token = bearer_token(headers)?;
+        let claims = self
+            .client
+            .introspect_with_requirements(token, &self.audience, &REQUIRED_SCOPES)
+            .await
+            .map_err(map_client_error)?;
+        if !claims.active || claims.aud.as_deref() != Some(self.audience.as_str()) {
+            return Err(AuthFailure::Invalid);
+        }
+        let subject = claims
+            .sub
+            .filter(|subject| !subject.trim().is_empty())
+            .ok_or(AuthFailure::Invalid)?;
+        Ok(VerifiedIdentity { subject })
+    }
 }
 
 pub async fn require_auth(
     State(state): State<AppState>,
-    request: Request,
+    mut request: Request,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let secret = state.jwt_secret.as_ref().ok_or_else(|| {
-        tracing::error!("SUPABASE_JWT_SECRET not configured; rejecting protected request");
-        StatusCode::SERVICE_UNAVAILABLE
-    })?;
-
-    let token = bearer_token(&request).ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let mut validation = Validation::new(Algorithm::HS256);
-    validation.set_audience(&[state.jwt_aud.as_str()]);
-    // Not validated by default, which would accept a not-yet-valid token.
-    validation.validate_nbf = true;
-    // The 60s default is wider than we need; keep just enough for clock skew.
-    validation.leeway = state.jwt_leeway_secs;
-    if let Some(issuer) = state.jwt_issuer.as_ref() {
-        validation.set_issuer(&[issuer.as_str()]);
-    }
-
-    let claims = decode::<Claims>(
-        &token,
-        &DecodingKey::from_secret(secret.as_bytes()),
-        &validation,
-    )
-    .map_err(|err| {
-        tracing::debug!(error = %err, "JWT verification failed");
-        StatusCode::UNAUTHORIZED
-    })?
-    .claims;
-
-    let mut request = request;
-    request.extensions_mut().insert(claims);
+    let verifier = state
+        .shared_auth
+        .as_ref()
+        .ok_or(StatusCode::SERVICE_UNAVAILABLE)?;
+    let identity = verifier
+        .verify(request.headers())
+        .await
+        .map_err(|failure| match failure {
+            AuthFailure::Missing | AuthFailure::Invalid => StatusCode::UNAUTHORIZED,
+            AuthFailure::Unavailable => StatusCode::SERVICE_UNAVAILABLE,
+        })?;
+    request.extensions_mut().insert(identity);
     Ok(next.run(request).await)
 }
 
-fn bearer_token(request: &Request) -> Option<String> {
-    request
-        .headers()
-        .get(header::AUTHORIZATION)?
-        .to_str()
-        .ok()?
-        .strip_prefix("Bearer ")
-        .map(str::to_owned)
+pub fn bearer_token(headers: &HeaderMap) -> Result<&str, AuthFailure> {
+    let raw = headers
+        .get(AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .ok_or(AuthFailure::Missing)?;
+    let (scheme, token) = raw.split_once(' ').ok_or(AuthFailure::Invalid)?;
+    if !scheme.eq_ignore_ascii_case("Bearer")
+        || token.is_empty()
+        || token.trim() != token
+        || token.chars().any(char::is_whitespace)
+    {
+        return Err(AuthFailure::Invalid);
+    }
+    Ok(token)
+}
+
+fn map_client_error(error: ClientError) -> AuthFailure {
+    match error {
+        ClientError::Unauthorized | ClientError::InvalidInput(_) => AuthFailure::Invalid,
+        ClientError::MissingServiceCredential
+        | ClientError::InvalidBaseUrl
+        | ClientError::RequestTooLarge { .. }
+        | ClientError::ResponseTooLarge { .. }
+        | ClientError::Encode { .. }
+        | ClientError::Decode { .. }
+        | ClientError::Transport(_)
+        | ClientError::Status(_)
+        | ClientError::InsecureTransport(_) => AuthFailure::Unavailable,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::{HeaderMap, HeaderValue, header::AUTHORIZATION};
+
+    use super::{AuthFailure, SharedAuthVerifier, bearer_token};
+
+    #[test]
+    fn bearer_parser_is_strict() {
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer synthetic"));
+        assert_eq!(bearer_token(&headers), Ok("synthetic"));
+        for value in [
+            "Basic token",
+            "Bearer",
+            "Bearer token extra",
+            "Bearer  token",
+        ] {
+            headers.insert(AUTHORIZATION, HeaderValue::from_str(value).expect("header"));
+            assert_eq!(bearer_token(&headers), Err(AuthFailure::Invalid));
+        }
+    }
+
+    #[test]
+    fn verifier_rejects_remote_cleartext_authority() {
+        assert!(
+            SharedAuthVerifier::new(
+                "http://auth.example.test",
+                "independent-service-credential",
+                "act-web"
+            )
+            .is_err()
+        );
+    }
 }
