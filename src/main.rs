@@ -56,6 +56,7 @@
 
 mod auth;
 mod config;
+mod data_plane;
 mod db;
 mod routes;
 mod state;
@@ -66,32 +67,78 @@ mod ui_dioxus;
 #[cfg(feature = "ui-leptos")]
 mod ui_leptos;
 
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let cfg = config::Config::from_env();
-    telemetry::init(&cfg.service_name)?;
+    let cfg = config::Config::from_env()?;
+    let _telemetry = telemetry::init(&cfg.service_name)?;
 
-    let db = match &cfg.database_url {
-        Some(url) => db::connect(url).await,
-        None => {
-            tracing::info!("DATABASE_URL not set; running without persistence");
-            None
-        }
-    };
-
-    if cfg.supabase_jwt_secret.is_none() {
-        tracing::warn!("SUPABASE_JWT_SECRET not set; protected routes will reject all requests");
+    let shared_auth = cfg
+        .shared_auth
+        .as_ref()
+        .map(|auth| {
+            auth::SharedAuthVerifier::new(
+                auth.base_url.clone(),
+                auth.service_credential.clone(),
+                auth.audience.clone(),
+            )
+        })
+        .transpose()?;
+    if shared_auth.is_none() {
+        tracing::warn!("Shared Auth is not configured; protected routes are closed");
     }
 
+    let direct = match cfg.direct_database.as_ref() {
+        Some(config) => match db::DirectReadStore::connect(config).await {
+            Ok(store) => Some(store),
+            Err(error) => {
+                tracing::warn!(error = %error, "read-only database unavailable; direct mode disabled");
+                None
+            }
+        },
+        None => None,
+    };
+    let tcp = cfg
+        .mtls
+        .as_ref()
+        .map(data_plane::PersistentMtlsClient::from_config)
+        .transpose()?
+        .map(Arc::new);
+    let jetstream = match cfg.nats_url.as_deref() {
+        Some(url) => match async_nats::connect(url).await {
+            Ok(client) => Some(async_nats::jetstream::new(client)),
+            Err(error) => {
+                tracing::warn!(error = %error, "NATS unavailable; async mode disabled");
+                None
+            }
+        },
+        None => None,
+    };
+    let direct_database_connected = direct.is_some();
+    let stateless_http_configured = cfg.api_url.is_some();
+    let stateful_mtls_configured = tcp.is_some();
+    let jetstream_configured = jetstream.is_some();
+    let operation_attestation_key = cfg
+        .operation_attestation_key
+        .as_deref()
+        .map(|key| Arc::<[u8]>::from(key.as_bytes()));
+    let gateway = Arc::new(data_plane::TransportGateway::new(
+        direct,
+        cfg.api_url.clone(),
+        tcp,
+        jetstream,
+        operation_attestation_key,
+    )?);
+
     let state = state::AppState {
-        db,
-        jwt_secret: cfg.supabase_jwt_secret.clone(),
-        jwt_aud: cfg.supabase_jwt_aud.clone(),
-        jwt_issuer: cfg.supabase_jwt_iss.clone(),
-        jwt_leeway_secs: cfg.supabase_jwt_leeway_secs,
+        shared_auth,
+        gateway,
+        direct_database_connected,
+        stateless_http_configured,
+        stateful_mtls_configured,
+        jetstream_configured,
     };
 
     let app = routes::router(state);
@@ -105,7 +152,6 @@ async fn main() -> anyhow::Result<()> {
         .await?;
 
     tracing::info!("shutdown complete");
-    telemetry::shutdown();
     Ok(())
 }
 
