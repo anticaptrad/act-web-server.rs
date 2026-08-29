@@ -1,0 +1,87 @@
+[identity]
+service = "act-web-server"
+type_name = "RuntimeEnv"
+
+[help]
+url = "https://github.com/flags-2-env/flags-2-env"
+columns = ["options", "env", "type", "default", "description"]
+
+[parse]
+allow_unknown = false
+
+[env]
+ignore = ["ACT_API_CA_FILE", "ACT_NATS_OPERATION_HMAC_KEY", "ACT_NATS_URL", "ACT_READONLY_DATABASE_URL", "ACT_WEB_CLIENT_CERT_FILE", "ACT_WEB_CLIENT_KEY_FILE", "DATABASE_URL", "SHARED_AUTH_SERVICE_CREDENTIAL"]
+
+[flags.help]
+env = "CLI_HELP_REQUESTED"
+long = "help"
+short = "h"
+type = "boolean"
+default = false
+help = "Print command-line help."
+
+[flags.version]
+env = "CLI_VERSION_REQUESTED"
+long = "version"
+short = "V"
+type = "boolean"
+default = false
+help = "Print the server version."
+
+[flags.port]
+env = "PORT"
+long = "port"
+short = "p"
+type = "integer"
+default = 8080
+help = "HTTP listener port."
+
+[flags.service-name]
+env = "OTEL_SERVICE_NAME"
+long = "service-name"
+type = "string"
+default = "act-web-server"
+help = "OpenTelemetry service name."
+
+[flags.shared-auth-url]
+env = "SHARED_AUTH_URL"
+long = "shared-auth-url"
+type = "string"
+help = "Credential-free Shared Auth base URL."
+
+[flags.readonly-database-role]
+env = "ACT_READONLY_DATABASE_ROLE"
+long = "readonly-database-role"
+type = "string"
+help = "Expected database role ending in _web_ro."
+
+[flags.api-url]
+env = "ACT_API_URL"
+long = "api-url"
+type = "string"
+help = "Credential-free HTTPS or loopback API base URL."
+
+[flags.api-mtls-addr]
+env = "ACT_API_MTLS_ADDR"
+long = "api-mtls-addr"
+type = "string"
+help = "Optional API mTLS socket address."
+
+[flags.api-tls-server-name]
+env = "ACT_API_TLS_SERVER_NAME"
+long = "api-tls-server-name"
+type = "string"
+help = "Expected API TLS server name."
+
+[flags.otel-endpoint]
+env = "OTEL_EXPORTER_OTLP_ENDPOINT"
+long = "otel-endpoint"
+type = "string"
+help = "Credential-free OTLP endpoint."
+
+[flags.rust-log]
+env = "RUST_LOG"
+long = "rust-log"
+type = "string"
+default = "info,act_web_server=debug"
+help = "Tracing filter."

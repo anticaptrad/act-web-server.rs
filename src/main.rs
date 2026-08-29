@@ -58,6 +58,7 @@ mod auth;
 mod config;
 mod data_plane;
 mod db;
+mod flags;
 mod routes;
 mod state;
 mod telemetry;
@@ -72,6 +73,10 @@ use tokio::signal;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if let Some(output) = flags::process_control().map_err(std::io::Error::other)? {
+        print!("{output}");
+        return Ok(());
+    }
     let cfg = config::Config::from_env()?;
     let _telemetry = telemetry::init(&cfg.service_name)?;
 
