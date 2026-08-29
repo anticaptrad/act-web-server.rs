@@ -54,6 +54,7 @@
 //! auto-migrate at startup, and code-first models in a server crate never become
 //! a second schema authority.
 
+mod web_api_plane;
 mod auth;
 mod config;
 mod data_plane;
