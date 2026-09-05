@@ -13,6 +13,9 @@ ui-leptos = ["dep:leptos"]
 ui-dioxus = ["dep:dioxus", "dep:dioxus-ssr"]
 
 [dependencies]
+act-lib-core = { git = "https://github.com/anticaptrad/act-lib-core.git", default-features = false, features = ["read-only"] }  # avenue 1: reads only, enforced by the compiler
+ores-transport = { git = "https://github.com/ORESoftware/ores-transport.git", branch = "main" }  # TODO(DEN): pin to a rev once ores-transport is pushed
+k8s-web-api-data-plane = { git = "https://github.com/ORESoftware/k8s-libs-and-shared-defs.git", rev = "55adadc9f6d223d40b28ae66097dfe16930951b1", package = "k8s-web-api-data-plane" }
 act-api-server = { git = "https://github.com/anticaptrad/act-api-server.rs", rev = "f22ed47258c07556ab5bd1375efa3bc8ad56df29", package = "act_api_server" }
 async-nats = "0.50"
 async-trait = "0.1"
