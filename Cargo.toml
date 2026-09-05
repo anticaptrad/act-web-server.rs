@@ -18,6 +18,7 @@ async-nats = "0.50"
 async-trait = "0.1"
 tokio = { version = "1.37.0", features = ["full"] }
 axum = "0.7.5"
+flags2env = { version = "0.1.0", git = "https://github.com/flags-2-env/flags-2-env", rev = "d7bad9ea7dfc657653368237e08903514cdca1ec" }
 maud = { version = "0.26.0", features = ["axum"] }
 leptos = { version = "0.8.10", default-features = false, features = ["ssr"], optional = true }
 dioxus = { version = "0.7.3", default-features = false, features = ["minimal"], optional = true }
@@ -39,6 +40,8 @@ shared-auth-client = { git = "https://github.com/shared-auth/shared-auth-clients
 tokio-rustls = "0.26"
 tokio-util = { version = "0.7", features = ["codec"] }
 anyhow = "1.0"
+tempfile = "3"
+toml = "0.8"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
