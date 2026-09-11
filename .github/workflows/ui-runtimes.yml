@@ -1,0 +1,44 @@
+name: ui runtimes
+
+on:
+  pull_request:
+    paths:
+      - Cargo.lock
+      - Cargo.toml
+      - src/ui.rs
+      - src/ui_dioxus.rs
+      - src/ui_leptos.rs
+      - src/routes.rs
+      - .github/workflows/ui-runtimes.yml
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ui-runtimes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  renderers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install Rust quality components
+        run: rustup component add rustfmt clippy
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Test default Maud surface
+        run: cargo test --locked
+
+      - name: Test all renderer adapters
+        run: cargo test --all-features --locked
+
+      - name: Lint all renderer adapters
+        run: cargo clippy --all-targets --all-features --locked -- -D warnings
