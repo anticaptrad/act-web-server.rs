@@ -193,7 +193,7 @@ fn validate_async_configuration(
 }
 
 fn env_non_empty(name: &str) -> Option<String> {
-    std::env::var(name)
+    crate::flags::var(name)
         .ok()
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())
