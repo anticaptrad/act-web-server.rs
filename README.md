@@ -86,3 +86,40 @@ cargo audit
 
 The `.zpkg.toml` manifest is the zed-pkg package/dependency intent. Cargo Git
 dependencies remain immutable source pins; no `.zpkg.lock` is fabricated.
+
+# Anticaptrad Web Server
+
+Rust/Axum operator web surface for Anticaptrad. The service exposes public liveness/readiness probes and a minimal public operator page, while protected API routes require a verified Supabase JWT.
+
+## Current HTTP surface
+
+- `GET /` — public operator UI; the page itself contains no protected account data.
+- `GET /health` — liveness probe.
+- `GET /ready` — readiness response including whether optional PostgreSQL connectivity is available.
+- `GET /api/me` — authenticated identity projection from the verified Supabase JWT.
+
+Protected routes fail closed when JWT verification is not configured. Operator tokens are supplied in the browser only for authenticated calls, are sent in the `Authorization` header, and must not be placed in URLs, persisted, or logged.
+
+## Local validation
+
+```sh
+cargo fmt --all -- --check
+cargo test --workspace --all-targets --locked
+cargo clippy --workspace --all-targets --locked -- -D warnings
+cargo build --workspace --release --locked
+```
+
+The repository includes the SeaORM migration workspace member, so workspace-wide validation is required rather than checking only the web binary.
+
+## Security and trust boundaries
+
+This repository owns the web/operator boundary, not the Anticaptrad YouTube/GAS administrative control plane. It must preserve:
+
+- verified Supabase authentication on protected routes;
+- a credential-free public page and probes;
+- distinct liveness, readiness, and persistence signals;
+- same-origin operation and stable browser-E2E selectors;
+- read-only-root-filesystem compatibility;
+- explicit telemetry without credential or protected-payload fields.
+
+See `SECURITY.md` for vulnerability reporting and handling expectations.
