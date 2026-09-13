@@ -22,6 +22,13 @@ pub struct TelemetryGuard {
 
 impl Drop for TelemetryGuard {
     fn drop(&mut self) {
+        const ROUTINE_ID: &str = "ores-routine-Y0gP7CkLtsLhkflOkn7Ag";
+        let _ = self
+            .ores_logger
+            .info(vec![json!("telemetry shutting down")])
+            .add_trace("ores-trace-J4gxOroWuiljDT-wgwjR3", false)
+            .add_routine_id(ROUTINE_ID)
+            .send();
         if self.ores_logger.close().is_err() {
             eprintln!("telemetry: Ores logger shutdown failed");
         }
@@ -32,6 +39,7 @@ impl Drop for TelemetryGuard {
 }
 
 pub fn init(service_name: &str) -> anyhow::Result<TelemetryGuard> {
+    const ROUTINE_ID: &str = "ores-routine-7LOLSvk-hqklZzNCgeOgd";
     let filter = EnvFilter::try_new(
         crate::flags::var("RUST_LOG").unwrap_or_else(|_| "info,act_web_server=debug".into()),
     )?;
@@ -66,6 +74,8 @@ pub fn init(service_name: &str) -> anyhow::Result<TelemetryGuard> {
             ("service.namespace".to_string(), json!("anticaptrad")),
             ("data.classification".to_string(), json!("metadata-only")),
         ]))
+        .add_trace("ores-trace-O0S0P9gdPeHI4jMFdTXj8", false)
+        .add_routine_id(ROUTINE_ID)
         .send();
     Ok(TelemetryGuard {
         ores_logger,
