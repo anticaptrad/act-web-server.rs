@@ -29,6 +29,17 @@ jobs:
           rustup toolchain install stable --profile minimal --component rustfmt,clippy
           rustup default stable
 
+      - name: Install pinned Zed CLI
+        run: cargo install --git https://github.com/zed-pkg/zed-cli --rev 822bbdef7ebb9218a83ad7d3b3dca78ade1add79 --locked zed-cli
+
+      - name: Materialize browser worker package
+        run: zed install --allow-build --install-mode copy
+
+      - name: Verify ores-sw payload
+        run: |
+          test -f .vendor/.zed/oresoftware/ores-sw/dist/service-worker.js
+          test -f .vendor/.zed/oresoftware/ores-sw/rust/axum08.rs
+
       - name: Format
         run: cargo fmt --all -- --check
 
