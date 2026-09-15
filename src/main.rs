@@ -69,6 +69,9 @@ mod ui_dioxus;
 #[cfg(feature = "ui-leptos")]
 mod ui_leptos;
 
+#[path = "../.vendor/.zed/oresoftware/ores-sw/rust/axum08.rs"]
+mod ores_sw_axum;
+
 use std::{net::SocketAddr, sync::Arc};
 use tokio::signal;
 
@@ -147,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
         jetstream_configured,
     };
 
-    let app = routes::router(state);
+    let app = ores_sw_axum::install(routes::router(state));
 
     let addr = SocketAddr::from(([0, 0, 0, 0], cfg.port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
