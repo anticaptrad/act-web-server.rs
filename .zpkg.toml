@@ -19,6 +19,7 @@ url = "https://github.com/anticaptrad/act-web-server.rs"
 "shared-auth/shared-auth-clients" = "^0.1.0"
 "oresoftware/next-loggers" = "^0.1.0"
 "oresoftware/k8s-libs-and-shared-defs" = "^0.1.0"
+"oresoftware/ores-sw" = "^0.1.0"
 
 [build]
 command = "cargo build --release --locked"
